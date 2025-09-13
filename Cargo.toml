@@ -1,0 +1,15 @@
+[package]
+name = "runex"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gtk = { version = "0.10.0", package = "gtk4", features = ["v4_18"] }
+glib = "0.21.1"
+gio = "0.21.1"
+gtk4-layer-shell = "0.6.3"
+jsonc-parser = { version = "0.26.3", features = ["serde"]}
+serde_json = "1.0.143"
+serde = { version = "1.0.219", features = ["std", "derive"] }
+anyhow = "1.0.99"
+clap = { version = "4.5.47", features = ["derive"] }
