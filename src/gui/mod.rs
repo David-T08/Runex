@@ -1,24 +1,27 @@
 use std::path::PathBuf;
 
 use gtk::prelude::*;
-use gtk::{Application, ApplicationWindow, CssProvider, Orientation, gdk, gio};
+use gtk::{Application, ApplicationWindow, CssProvider, gdk, gio};
 
 use gdk::Display;
 use gio::ActionEntry;
 use glib::clone;
 
 use anyhow::{Context, Result};
-use gtk4_layer_shell::{KeyboardMode, Layer, LayerShell};
+use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 
 use crate::CliArgs;
-use crate::config::{Configuration, config_home_path};
+use crate::config::{ResolvedConfig, ResolvedScrim, config_home_path};
 
+mod overlay;
+mod scrim;
 mod search;
+mod panel;
 
 pub fn build_application(
     app_id: &str,
     cli_args: CliArgs,
-    app_config: Configuration,
+    app_config: ResolvedConfig,
 ) -> Result<gtk::Application> {
     let app = Application::builder().application_id(app_id).build();
 
@@ -32,10 +35,7 @@ pub fn build_application(
     app.connect_activate(clone!(
         #[strong]
         app_config,
-
-        move |app| {
-            build_ui(app, &app_config)
-        }
+        move |app| build_ui(app, &app_config)
     ));
 
     app.set_accels_for_action("win.close", &["Escape"]);
@@ -43,32 +43,81 @@ pub fn build_application(
     Ok(app)
 }
 
-fn build_ui(app: &Application, config: &Configuration) {
-    let container = gtk::Box::builder()
-        .opacity(1.0)
-        .orientation(Orientation::Vertical)
-        .width_request(config.width)
-        .vexpand(true)
-        .build();
 
-    let window = ApplicationWindow::builder()
-        .application(app)
-        .decorated(false)
-        .resizable(false)
-        .child(&container)
-        .build();
-
-    window.init_layer_shell();
-    window.set_layer(Layer::Overlay);
-    window.set_keyboard_mode(KeyboardMode::Exclusive);
-
+fn setup_keybindings(window: &ApplicationWindow) {
     let action_close = ActionEntry::builder("close")
         .activate(|window: &ApplicationWindow, _, _| {
+            eprintln!("poressed esc");
             window.close();
         })
         .build();
 
+    // Safety to close automatically
+    glib::timeout_add_seconds_local_once(
+        30,
+        clone!(
+            #[weak]
+            window,
+            move || {
+                eprintln!("safety close");
+                window.close()
+            }
+        ),
+    );
+
+    window.connect_close_request(|_| {
+        eprintln!("close-request fired");
+        glib::Propagation::Proceed
+    });
+
     window.add_action_entries([action_close]);
+}
+
+
+fn setup_gls(window: &ApplicationWindow) {
+    window.init_layer_shell();
+    window.set_layer(Layer::Overlay);
+    window.set_keyboard_mode(KeyboardMode::Exclusive);
+
+    window.set_exclusive_zone(-1);
+    window.set_namespace(Some("runex"));
+}
+
+
+fn apply_scrim(window: &ApplicationWindow, s: &ResolvedScrim) {
+    for e in &s.edges {
+        window.set_anchor((*e).into(), true);
+    }
+
+    window.set_margin(Edge::Left, s.margins.left);
+    window.set_margin(Edge::Right, s.margins.right);
+    window.set_margin(Edge::Top, s.margins.top);
+    window.set_margin(Edge::Bottom, s.margins.bottom);
+}
+
+
+fn build_ui(app: &Application, config: &ResolvedConfig) {
+    let overlay = overlay::build();
+    let scrim = scrim::build();
+
+    let panel = panel::build();
+    let search = search::build(&config);
+
+    panel.append(&search);
+
+    overlay.set_child(Some(&scrim));
+    overlay.add_overlay(&panel);
+
+    let window = ApplicationWindow::builder()
+        .application(app)
+        .decorated(false)
+        .resizable(true)
+        .child(&overlay)
+        .build();
+
+    setup_gls(&window);
+    setup_keybindings(&window);
+    apply_scrim(&window, &config.scrim);
 
     window.present();
 }

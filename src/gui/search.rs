@@ -1,13 +1,13 @@
-use gtk::Entry;
-use gtk::prelude::*;
+use gtk::{Entry};
 
-use crate::config::Configuration;
+use crate::config::ResolvedConfig;
 
-pub fn build(config: &Configuration) {
+pub fn build(config: &ResolvedConfig) -> Entry {
     let entry = Entry::builder()
         .placeholder_text("Type to filter")
-        .css_name("runex-query")
+        .css_classes(["query"])
         .hexpand(true)
-        .height_request(config.query_height)
         .build();
+
+    entry
 }
